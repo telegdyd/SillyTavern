@@ -1,0 +1,90 @@
+# Manually-triggered workflow that builds a Docker image from the staging
+# branch and pushes it to this repo's GitHub Container Registry (ghcr.io).
+# Run it from the Actions tab -> "Build Staging Docker Image" -> "Run workflow".
+
+name: Build Staging Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to publish (e.g. staging, latest, 2026-09-02)"
+        required: true
+        default: "staging"
+      platforms:
+        description: "Target architectures"
+        required: true
+        default: "linux/amd64"
+        type: choice
+        options:
+          - "linux/amd64"
+          - "linux/arm64"
+          - "linux/amd64,linux/arm64"
+
+env:
+  REGISTRY: ghcr.io
+  REPO: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # Container image names must be lowercase; GitHub usernames can contain uppercase.
+      - name: Set lowercase image name and short SHA
+        run: |
+          echo "IMAGE_NAME=${REPO,,}" >> "${GITHUB_ENV}"
+
+      - name: Checkout the staging branch
+        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v4.1.2
+        with:
+          ref: "staging"
+
+      - name: Record the built commit
+        run: |
+          echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "${GITHUB_ENV}"
+
+      # QEMU is only needed for cross-arch (arm64) builds; harmless otherwise.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0 # v5.3.0
+        with:
+          context: .
+          file: Dockerfile
+          platforms: ${{ inputs.platforms }}
+          push: true
+          # Publishes both the chosen tag and a traceable staging-<sha> tag.
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging-${{ env.SHORT_SHA }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ env.REPO }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Summary
+        run: |
+          {
+            echo "### Image published :whale:"
+            echo ""
+            echo "\`\`\`"
+            echo "docker pull ${REGISTRY}/${IMAGE_NAME}:${{ inputs.tag }}"
+            echo "docker pull ${REGISTRY}/${IMAGE_NAME}:staging-${SHORT_SHA}"
+            echo "\`\`\`"
+            echo ""
+            echo "Built from staging @ ${SHORT_SHA} for \`${{ inputs.platforms }}\`."
+          } >> "${GITHUB_STEP_SUMMARY}"
