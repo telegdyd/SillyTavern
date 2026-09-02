@@ -415,6 +415,55 @@ export async function syncOpenRouterProvidersForModel(modelId, providersSelector
     }
 }
 
+/**
+ * Fetches the full list of OpenRouter providers and merges any missing ones
+ * into the chat completion provider select, keeping it up to date without a
+ * hardcoded list. The static list still serves as a fallback.
+ * @param {string} providersSelector Selector of the provider <select> to populate.
+ */
+export async function populateOpenRouterProvidersList(providersSelector = '#openrouter_providers_chat') {
+    const $providers = $(providersSelector);
+
+    if ($providers.length === 0) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/openrouter/providers', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+        });
+
+        if (!response.ok) {
+            return;
+        }
+
+        const providerNames = await response.json();
+
+        if (!Array.isArray(providerNames) || providerNames.length === 0) {
+            return;
+        }
+
+        const existing = new Set($providers.find('option').map(function () {
+            return String($(this).val());
+        }).get());
+
+        let added = false;
+        for (const name of providerNames) {
+            if (name && !existing.has(String(name))) {
+                $providers.append($('<option>', { value: name, text: name }));
+                added = true;
+            }
+        }
+
+        if (added) {
+            $providers.trigger('change.select2');
+        }
+    } catch (error) {
+        console.error('Failed to fetch OpenRouter providers list', error);
+    }
+}
+
 export async function syncNanoGptProvidersForModel(modelId, providersSelector) {
     const $providers = $(providersSelector);
 
@@ -1408,6 +1457,9 @@ export function initTextGenModels() {
         }));
     }
 
+    // Keep the chat completion provider list in sync with OpenRouter's live list.
+    populateOpenRouterProvidersList('#openrouter_providers_chat');
+
     const nanoGptProvidersSelect = $('#nanogpt_provider');
     for (const provider of NANOGPT_PROVIDERS) {
         nanoGptProvidersSelect.append($('<option>', {
@@ -1501,14 +1553,17 @@ export function initTextGenModels() {
             searchInputPlaceholder: t`Search quantizations...`,
             width: '100%',
         });
-        providersSelect.select2({
+        const providersSelect2Options = {
             sorter: data => data.sort((a, b) => a.text.localeCompare(b.text)),
             placeholder: t`Select providers. No selection = all providers.`,
             searchInputPlaceholder: t`Search providers...`,
             searchInputCssClass: 'text_pole',
             width: '100%',
             closeOnSelect: false,
-        });
+        };
+        // Text completion keeps the fixed list; chat completion allows typing custom providers.
+        $('#openrouter_providers_text').select2(providersSelect2Options);
+        $('#openrouter_providers_chat').select2({ ...providersSelect2Options, tags: true });
         providersSelect.on('select2:select', function (/** @type {any} */ evt) {
             const element = evt.params.data.element;
             const $element = $(element);

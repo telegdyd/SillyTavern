@@ -33,6 +33,31 @@ router.post('/models/providers', async (req, res) => {
     }
 });
 
+router.post('/providers', async (_req, res) => {
+    try {
+        const response = await fetch(`${API_OPENROUTER}/providers`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            },
+        });
+
+        if (!response.ok) {
+            return res.json([]);
+        }
+
+        /** @type {any} */
+        const data = await response.json();
+        const providers = Array.isArray(data?.data) ? data.data : [];
+        const providerNames = providers.map(p => p?.name).filter(Boolean);
+
+        return res.json(providerNames);
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+});
+
 /**
  * Fetches and filters models from OpenRouter API based on modality criteria.
  * @param {string} endpoint - The API endpoint to fetch from
