@@ -6575,6 +6575,70 @@ function runProxyCallback(_, value) {
 }
 
 /**
+ * Slash command callback for /openrouter-provider.
+ * Reads the currently selected OpenRouter providers (chat completion) if no value is
+ * provided, otherwise sets them from a comma-separated list of provider names.
+ * @param {object} _ Named arguments (unused)
+ * @param {string} value Comma-separated provider names, or empty to read
+ * @returns {string} Comma-separated list of the selected providers
+ */
+function runOpenRouterProviderCallback(_, value) {
+    const isOpenRouter = oai_settings.chat_completion_source === chat_completion_sources.OPENROUTER;
+
+    // Read mode: return empty for other sources so it isn't recorded into non-OpenRouter profiles
+    if (!value) {
+        if (!isOpenRouter || !Array.isArray(oai_settings.openrouter_providers)) {
+            return '';
+        }
+        return oai_settings.openrouter_providers.join(', ');
+    }
+
+    const providers = value.split(',').map(p => p.trim()).filter(Boolean);
+    const $providers = $('#openrouter_providers_chat');
+
+    // The live provider list may not be loaded yet, so make sure an option exists for each requested provider
+    const existing = new Set($providers.find('option').map(function () { return String($(this).val()); }).get());
+    for (const provider of providers) {
+        if (!existing.has(provider)) {
+            $providers.append($('<option>', { value: provider, text: provider }));
+        }
+    }
+
+    $providers.val(providers).trigger('change').trigger('change.select2');
+    return providers.join(', ');
+}
+
+/**
+ * Slash command callback for /openrouter-service-tier.
+ * Reads the current OpenRouter service tier (chat completion) if no value is provided,
+ * otherwise sets it.
+ * @param {object} _ Named arguments (unused)
+ * @param {string} value Service tier value, or empty to read
+ * @returns {string} The current service tier
+ */
+function runOpenRouterServiceTierCallback(_, value) {
+    const isOpenRouter = oai_settings.chat_completion_source === chat_completion_sources.OPENROUTER;
+
+    // Read mode: return empty for other sources so it isn't recorded into non-OpenRouter profiles
+    if (!value) {
+        if (!isOpenRouter) {
+            return '';
+        }
+        return oai_settings.openrouter_service_tier || '';
+    }
+
+    const $tier = $('#openrouter_service_tier');
+    const validValues = $tier.find('option').map(function () { return String($(this).val()); }).get();
+    if (!validValues.includes(value)) {
+        toastr.warning(t`Unknown OpenRouter service tier: ${value}`);
+        return '';
+    }
+
+    $tier.val(value).trigger('input');
+    return value;
+}
+
+/**
  * Handle Vertex AI authentication mode change
  */
 function onVertexAIAuthModeChange() {
@@ -6739,6 +6803,45 @@ export function initOpenAI() {
             }),
         ],
         helpString: 'Sets a proxy preset by name.',
+    }));
+
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'openrouter-provider',
+        aliases: ['or-provider'],
+        callback: runOpenRouterProviderCallback,
+        returns: 'comma-separated list of the selected providers',
+        namedArgumentList: [],
+        unnamedArgumentList: [
+            SlashCommandArgument.fromProps({
+                description: 'comma-separated list of OpenRouter provider names (empty to read the current value)',
+                typeList: [ARGUMENT_TYPE.STRING],
+                isRequired: false,
+                enumProvider: () => $('#openrouter_providers_chat option').map(function () {
+                    return new SlashCommandEnumValue(String($(this).val()));
+                }).get(),
+            }),
+        ],
+        helpString: 'Gets or sets the OpenRouter provider preferences (Chat Completion). Pass a comma-separated list of provider names to set them, or no argument to get the current value. Only applies when the Chat Completion source is OpenRouter.',
+    }));
+
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'openrouter-service-tier',
+        aliases: ['or-service-tier'],
+        callback: runOpenRouterServiceTierCallback,
+        returns: 'current OpenRouter service tier',
+        namedArgumentList: [],
+        unnamedArgumentList: [
+            SlashCommandArgument.fromProps({
+                description: 'OpenRouter service tier (empty to read the current value)',
+                typeList: [ARGUMENT_TYPE.STRING],
+                isRequired: false,
+                enumProvider: () => $('#openrouter_service_tier option').map(function () {
+                    const val = String($(this).val());
+                    return new SlashCommandEnumValue(val, val ? null : 'Default');
+                }).get(),
+            }),
+        ],
+        helpString: 'Gets or sets the OpenRouter service tier (Chat Completion). Pass a tier value (e.g. flex, priority) to set it, or no argument to get the current value. Only applies when the Chat Completion source is OpenRouter.',
     }));
 
     $('#test_api_button').on('click', testApiConnection);
