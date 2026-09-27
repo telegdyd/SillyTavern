@@ -7372,13 +7372,13 @@ export function initOpenAI() {
     }
 
     $('#openrouter_providers_chat').on('change', function () {
-        const selectedProviders = $(this).val();
-
         // Not a multiple select?
-        if (!Array.isArray(selectedProviders)) {
+        if (!(this instanceof HTMLSelectElement) || !this.multiple) {
             return;
         }
 
+        // jQuery's val() skips disabled options, i.e. providers not served for the current model
+        const selectedProviders = Array.from(this.selectedOptions, option => option.value);
         oai_settings.openrouter_providers = selectedProviders;
 
         updateOpenRouterProvidersWarning('#openrouter_providers_chat');

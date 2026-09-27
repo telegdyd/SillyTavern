@@ -1061,13 +1061,13 @@ export function initTextGenSettings() {
     $('#textgen_logit_bias_new_entry').on('click', () => createNewLogitBiasEntry(textgenerationwebui_settings.logit_bias, BIAS_KEY));
 
     $('#openrouter_providers_text').on('change', function () {
-        const selectedProviders = $(this).val();
-
         // Not a multiple select?
-        if (!Array.isArray(selectedProviders)) {
+        if (!(this instanceof HTMLSelectElement) || !this.multiple) {
             return;
         }
 
+        // jQuery's val() skips disabled options, i.e. providers not served for the current model
+        const selectedProviders = Array.from(this.selectedOptions, option => option.value);
         textgenerationwebui_settings.openrouter_providers = selectedProviders;
 
         updateOpenRouterProvidersWarning('#openrouter_providers_text');
